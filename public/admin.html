@@ -1,37 +1,204 @@
 <!doctype html>
 <html lang="vi">
-<head><meta charset="utf-8"><title>Admin</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Cosplay Gallery</title>
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{ --bg:#f6f7fb; --ink:#111827; --muted:#6b7280; --ring:#e5e7eb; --card:#fff; --radius:14px; --ok:#10b981; --bad:#ef4444 }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0e131b; --ink:#e9eef6; --muted:#9aa7b7; --ring:#1f2937; --card:#131a23 }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:500 16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:1000px;margin:16px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--ring);border-radius:var(--radius);padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.05);margin-bottom:16px}
+  label{display:block;margin:10px 0 6px;color:var(--muted)}
+  input,textarea{width:100%;padding:10px 12px;border:1px solid var(--ring);border-radius:12px;background:#fff}
+  textarea{min-height:120px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .actions{display:flex;gap:10px;margin-top:12px}
+  button{padding:10px 14px;border:1px solid var(--ring);border-radius:10px;background:#111827;color:#fff;cursor:pointer}
+  table{width:100%;border-collapse:separate;border-spacing:0 8px}
+  th,td{padding:10px 12px;border-bottom:1px solid var(--ring)}
+  .tbl-actions button{padding:6px 10px;font-size:13px}
+  .pill{font-size:12px;color:var(--muted)}
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 14px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
 <body>
-  <h1>Thêm Album</h1>
-  <form id="form">
-    <input name="title" placeholder="Tiêu đề"><br>
-    <input name="slug" placeholder="Slug"><br>
-    <input name="cover" placeholder="Ảnh bìa"><br>
-    <input name="video" placeholder="Video link (tùy chọn)"><br>
-    <textarea name="images" placeholder="Mỗi dòng 1 ảnh"></textarea><br>
-    <button type="submit">Lưu</button>
-  </form>
-  <div id="msg"></div>
+<main class="wrap">
+  <h1 style="margin:8px 0">Quản lý Album</h1>
+
+  <div class="card">
+    <form id="form">
+      <div class="row">
+        <div>
+          <label>Tiêu đề</label>
+          <input id="title" required>
+        </div>
+        <div>
+          <label>Slug</label>
+          <input id="slug" placeholder="không dấu cách" required>
+        </div>
+      </div>
+      <label>Tags (phân tách bằng dấu phẩy)</label>
+      <input id="tags" placeholder="Cosplay, Wuthering Waves">
+      <div class="row">
+        <div>
+          <label>Cover (ảnh bìa)</label>
+          <input id="cover" placeholder="https://.../cover.jpg">
+        </div>
+        <div>
+          <label>Video (tùy chọn)</label>
+          <input id="video" placeholder="mp4/m3u8/iframe/archive.org">
+        </div>
+      </div>
+      <label>Danh sách ảnh (mỗi dòng 1 link)</label>
+      <textarea id="images" placeholder="https://.../001.jpg&#10;https://.../002.jpg"></textarea>
+      <div class="row">
+        <div>
+          <label>Ngày tạo</label>
+          <input id="created" placeholder="YYYY-MM-DD">
+        </div>
+        <div style="display:flex;align-items:end"><span class="pill">Để trống sẽ dùng ngày hôm nay</span></div>
+      </div>
+      <div class="actions">
+        <button type="submit" id="btnSave">Lưu / Cập nhật</button>
+        <button type="button" id="btnReset" style="background:#374151">Xoá form</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Danh sách album</h3>
+    <table id="table">
+      <thead>
+        <tr><th>Tiêu đề</th><th>Slug</th><th>Ngày</th><th>Tags</th><th class="tbl-actions">Hành động</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<div id="toast" class="toast">Đã lưu!</div>
 
 <script>
-document.getElementById("form").onsubmit = async e=>{
-  e.preventDefault();
-  const f = e.target;
-  const album = {
-    title: f.title.value,
-    slug: f.slug.value,
-    cover: f.cover.value,
-    video: f.video.value,
-    images: f.images.value.split("\n").map(s=>s.trim()).filter(Boolean),
-    created: new Date().toISOString().slice(0,10)
+  // --- optional admin key (nếu bạn chặn bằng x-admin-key ở server) ---
+  const ADMIN_KEY = localStorage.getItem("ADMIN_KEY") || "";
+  function headers() {
+    return ADMIN_KEY ? { "Content-Type":"application/json", "x-admin-key": ADMIN_KEY } : { "Content-Type":"application/json" };
+  }
+
+  const els = {
+    title:  document.getElementById('title'),
+    slug:   document.getElementById('slug'),
+    cover:  document.getElementById('cover'),
+    video:  document.getElementById('video'),
+    tags:   document.getElementById('tags'),
+    images: document.getElementById('images'),
+    created:document.getElementById('created'),
+    tbody:  document.getElementById('tbody'),
+    toast:  document.getElementById('toast'),
   };
-  const res = await fetch("/api/albums",{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(album)
+
+  const today = ()=> {
+    const d = new Date(); const m = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${m}-${dd}`;
+  };
+  const showToast = (msg)=>{
+    els.toast.textContent = msg; els.toast.classList.add('show');
+    setTimeout(()=>els.toast.classList.remove('show'), 1600);
+  }
+  const clearForm = ()=>{
+    els.title.value = els.slug.value = els.cover.value = els.video.value = els.tags.value = ''; 
+    els.images.value = ''; els.created.value = '';
+  }
+  const parseTags = s => s.split(',').map(x=>x.trim()).filter(Boolean);
+
+  async function loadList(){
+    const r = await fetch('/api/albums',{cache:'no-store'});
+    const data = await r.json();
+    const rows = (data.albums||[]).map(a=>`
+      <tr>
+        <td>${a.title}</td>
+        <td><code>${a.slug}</code></td>
+        <td>${a.created||''}</td>
+        <td>${(a.tags||[]).join(', ')}</td>
+        <td class="tbl-actions">
+          <button data-edit="${a.slug}">Edit</button>
+          <button data-del="${a.slug}" style="background:#b91c1c">Delete</button>
+          <a href="/album.html?slug=${encodeURIComponent(a.slug)}" target="_blank"><button type="button" style="background:#065f46">Xem</button></a>
+        </td>
+      </tr>
+    `).join('');
+    els.tbody.innerHTML = rows || `<tr><td colspan="5">Chưa có album</td></tr>`;
+  }
+
+  // Submit (create/update)
+  document.getElementById('form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const album = {
+      title: els.title.value.trim(),
+      slug:  els.slug.value.trim().toLowerCase(),
+      cover: els.cover.value.trim(),
+      video: els.video.value.trim(),
+      tags:  parseTags(els.tags.value),
+      images: els.images.value.split('\n').map(s=>s.trim()).filter(Boolean),
+      created: els.created.value.trim() || today(),
+    };
+    if(!album.title || !album.slug || album.images.length===0){
+      showToast('Thiếu tiêu đề/slug/ảnh'); return;
+    }
+    // Kiểm tra tồn tại -> PUT nếu có, POST nếu mới
+    const check = await fetch(`/api/albums/${encodeURIComponent(album.slug)}`);
+    const exists = check.ok;
+    const res = await fetch(exists ? `/api/albums/${album.slug}` : '/api/albums', {
+      method: exists ? 'PUT' : 'POST',
+      headers: headers(),
+      body: JSON.stringify(album)
+    });
+    if(res.ok){
+      showToast('Lưu thành công!');
+      clearForm();
+      loadList();
+    } else {
+      showToast('Lỗi lưu dữ liệu');
+    }
   });
-  const data = await res.json();
-  document.getElementById("msg").textContent = "Đã lưu album: "+data.album.title;
-};
+
+  // Reset form
+  document.getElementById('btnReset').onclick = clearForm;
+
+  // Delegation cho Edit/Delete
+  els.tbody.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    const slug = btn.dataset.edit || btn.dataset.del;
+    if(btn.dataset.edit){
+      const r = await fetch(`/api/albums/${encodeURIComponent(slug)}`);
+      if(!r.ok) return showToast('Không lấy được album');
+      const a = await r.json();
+      els.title.value = a.title || '';
+      els.slug.value  = a.slug || '';
+      els.cover.value = a.cover || '';
+      els.video.value = a.video || '';
+      els.tags.value  = (a.tags||[]).join(', ');
+      els.images.value= (a.images||[]).join('\n');
+      els.created.value= a.created || '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    if(btn.dataset.del){
+      if(!confirm(`Xoá album "${slug}"?`)) return;
+      const r = await fetch(`/api/albums/${encodeURIComponent(slug)}`, { method:'DELETE', headers: headers() });
+      if(r.ok){ showToast('Đã xoá'); loadList(); }
+      else { showToast('Không xoá được'); }
+    }
+  });
+
+  loadList();
 </script>
 </body>
 </html>

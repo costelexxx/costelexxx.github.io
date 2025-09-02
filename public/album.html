@@ -1,27 +1,150 @@
 <!doctype html>
 <html lang="vi">
-<head><meta charset="utf-8"><title>Album</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Album</title>
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{
+    --bg1:#f7f5f3; --bg2:#eef1f6; --ink:#1b2130; --muted:#6b7280;
+    --ring:rgba(0,0,0,.08); --card:#ffffff; --shadow:0 10px 30px rgba(0,0,0,.08);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg1:#0f1217; --bg2:#141821; --ink:#e9eef6; --muted:#9aa7b7; --card:#151a22; --ring:rgba(255,255,255,.12) }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:500 16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{background:linear-gradient(160deg,var(--bg1),var(--bg2));color:var(--ink)}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:920px;margin:16px auto;padding:0 16px}
+  .title{margin:6px 0 12px;font-weight:800}
+  .cover{height:220px;border-radius:12px;border:1px solid var(--ring);box-shadow:var(--shadow);
+         background:#ddd center/cover no-repeat;margin:8px 0 12px}
+  /* Video 16:9 responsive */
+  .hero{border-radius:12px;overflow:hidden;border:1px solid var(--ring);box-shadow:var(--shadow);background:#000;margin-bottom:16px}
+  .iframe-wrap{position:relative;width:100%;padding-top:56.25%}
+  .iframe-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+  .hero video{width:100%;height:auto;display:block;background:#000}
+  .tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px}
+  .tag{font-size:12px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;color:var(--muted)}
+  /* Ảnh: mỗi ảnh 1 dòng, full-width */
+  .images{display:flex;flex-direction:column;gap:12px;margin:16px 0 24px}
+  .imgbox{background:var(--card);border:1px solid var(--ring);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+  .imgbox img{width:100%;height:auto;display:block;image-rendering:auto}
+</style>
+</head>
 <body>
-  <h1 id="title"></h1>
-  <div id="video"></div>
-  <div id="images"></div>
+<main class="wrap">
+  <div id="cover" class="cover" style="display:none"></div>
+  <h1 id="title" class="title">Album</h1>
+  <div id="tags" class="tags"></div>
+
+  <section id="videoBox" class="hero" style="display:none"></section>
+
+  <section id="images" class="images" aria-live="polite"></section>
+</main>
 
 <script>
-  const slug = new URLSearchParams(location.search).get("slug");
-  async function load() {
-    const res = await fetch("/api/albums");
-    const data = await res.json();
-    const album = data.albums.find(a=>a.slug===slug);
-    if(!album){ document.body.innerHTML="Album không tồn tại"; return; }
-    document.getElementById("title").textContent = album.title;
-    if(album.video){
-      document.getElementById("video").innerHTML = `<video src="${album.video}" controls width="400"></video>`;
+  const slug = new URLSearchParams(location.search).get("slug") || "";
+
+  function renderVideo(url){
+    if(!url) return;
+    const box = document.getElementById('videoBox');
+    box.style.display = 'block';
+    const v = url.trim();
+
+    // 1) Archive.org -> dùng iframe embed cho ổn định
+    if (/archive\.org\/(embed|details)\//i.test(v)) {
+      // Chuẩn hóa sang /embed/<id>
+      const id = (v.match(/archive\.org\/(?:embed|details)\/([^/?#]+)/i)||[])[1];
+      const embed = id ? `https://archive.org/embed/${id}` : v;
+      box.innerHTML = `<div class="iframe-wrap">
+        <iframe src="${embed}" allowfullscreen loading="lazy" referrerpolicy="no-referrer"></iframe>
+      </div>`;
+      return;
     }
-    document.getElementById("images").innerHTML = album.images.map(u=>`
-      <img src="${u}" width="300">
-    `).join("");
+    if (/archive\.org\/download\//i.test(v)) {
+      // Link trực tiếp file trên archive (mp4/webm) -> phát bằng video tag
+      box.innerHTML = `<video controls playsinline preload="metadata" src="${v}" crossorigin="anonymous"></video>`;
+      return;
+    }
+
+    // 2) HLS (.m3u8) – Safari phát native; Chrome dùng hls.js
+    if (/\.m3u8($|\?)/i.test(v)) {
+      box.innerHTML = `<video id="player" controls playsinline preload="metadata"></video>`;
+      const s = document.createElement('script');
+      s.src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js";
+      s.onload = () => {
+        const video = document.getElementById('player');
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = v;
+        } else if (window.Hls) {
+          const hls = new Hls();
+          hls.loadSource(v);
+          hls.attachMedia(video);
+        } else {
+          // fallback iframe
+          box.innerHTML = `<div class="iframe-wrap"><iframe src="${v}" loading="lazy"></iframe></div>`;
+        }
+      };
+      document.body.appendChild(s);
+      return;
+    }
+
+    // 3) MP4/WEBM
+    if (/\.(mp4|webm)($|\?)/i.test(v)) {
+      box.innerHTML = `<video controls playsinline preload="metadata" src="${v}" crossorigin="anonymous"></video>`;
+      return;
+    }
+
+    // 4) Mặc định nhúng iframe
+    box.innerHTML = `<div class="iframe-wrap">
+      <iframe src="${v}" allowfullscreen loading="lazy" referrerpolicy="no-referrer"></iframe>
+    </div>`;
   }
-  load();
+
+  async function loadAlbum(){
+    try{
+      const res = await fetch(`/api/albums`, {cache:'no-store'});
+      const data = await res.json();
+      const album = (data.albums||[]).find(a=>a.slug===slug);
+      if(!album){ document.querySelector('.wrap').innerHTML = '<p>Album không tồn tại.</p>'; return; }
+
+      document.getElementById('title').textContent = album.title || 'Album';
+      if (album.cover){
+        const c = document.getElementById('cover');
+        c.style.backgroundImage = `url('${album.cover.replace(/"/g,'&quot;')}')`;
+        c.style.display = 'block';
+      }
+      // tags
+      document.getElementById('tags').innerHTML = (album.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('');
+
+      // video
+      renderVideo(album.video);
+
+      // images one-per-row + lazy
+      const images = document.getElementById('images');
+      images.innerHTML = (album.images||[]).map(u=>`
+        <figure class="imgbox">
+          <img data-src="${u}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        </figure>
+      `).join('');
+      const io = new IntersectionObserver((entries,obs)=>{
+        entries.forEach(e=>{
+          if(e.isIntersecting){
+            const img = e.target; img.src = img.dataset.src; obs.unobserve(img);
+          }
+        });
+      }, { rootMargin: "400px" });
+      document.querySelectorAll('img[data-src]').forEach(img=>io.observe(img));
+    }catch(e){
+      console.error(e);
+      document.querySelector('.wrap').innerHTML = '<p>Lỗi tải album.</p>';
+    }
+  }
+  loadAlbum();
 </script>
 </body>
 </html>

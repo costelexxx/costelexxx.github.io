@@ -1,25 +1,101 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <title>Cosplay Gallery</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cosplay Gallery</title>
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{
+    --bg1:#f7f5f3; --bg2:#eef1f6; --ink:#1a2233; --muted:#6b7280;
+    --card:#fff; --ring:rgba(0,0,0,.08); --shadow:0 10px 30px rgba(0,0,0,.08);
+    --radius:14px; --accent:#ff7a59;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg1:#0f1217; --bg2:#141821; --ink:#e9eef6; --muted:#9aa7b7; --card:#151a22; --ring:rgba(255,255,255,.12) }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:500 16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{background:linear-gradient(160deg,var(--bg1),var(--bg2));color:var(--ink)}
+  a{text-decoration:none;color:inherit}
+  /* Header */
+  .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;padding:12px 16px;background:linear-gradient(160deg,var(--bg1),var(--bg2));border-bottom:1px solid var(--ring)}
+  .brand{font-weight:800}
+  .hamburger{width:42px;height:42px;border:1px solid var(--ring);border-radius:12px;display:grid;place-items:center;background:transparent;cursor:pointer}
+  .hamburger span,.hamburger span:before,.hamburger span:after{display:block;width:18px;height:2px;background:currentColor;position:relative;content:""}
+  .hamburger span:before{position:absolute;top:-6px;content:""}
+  .hamburger span:after{position:absolute;top:6px;content:""}
+  /* Drawer */
+  .drawer{position:fixed;inset:0;display:none}
+  .drawer.open{display:block}
+  .drawer .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.25)}
+  .panel{position:absolute;left:0;top:0;bottom:0;width:260px;background:var(--card);border-right:1px solid var(--ring);box-shadow:var(--shadow);padding:16px}
+  .menu a{display:block;padding:10px 12px;border-radius:10px}
+  .menu a:hover{background:var(--ring)}
+  /* Grid */
+  .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--ring);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;transition:.15s transform}
+  .card:hover{transform:translateY(-2px)}
+  .thumb{aspect-ratio:16/9;background:#dfe6ef center/cover no-repeat}
+  .body{padding:12px}
+  .title{margin:0 0 6px;font-weight:800}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{font-size:12px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;color:var(--muted)}
+  .foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;color:var(--muted);font-size:12px}
+  .admin{position:fixed;right:12px;bottom:12px;font-size:12px;color:var(--muted);opacity:.75}
+</style>
 </head>
 <body>
-  <h1>Danh sách Album</h1>
-  <div id="albums"></div>
+<header class="topbar">
+  <button id="btnMenu" class="hamburger" aria-label="Menu"><span></span></button>
+  <div class="brand">Cosplay Gallery</div>
+</header>
 
-  <script>
-    async function load() {
-      const res = await fetch("/api/albums");
+<div id="drawer" class="drawer" aria-hidden="true">
+  <div id="backdrop" class="backdrop"></div>
+  <nav class="panel">
+    <h3 style="margin:4px 0 10px">Menu</h3>
+    <div class="menu">
+      <a href="/">Trang chủ</a>
+      <a href="/tags">Tags</a>
+      <a href="/admin.html">Quản trị</a>
+    </div>
+  </nav>
+</div>
+
+<main class="wrap">
+  <div id="grid" class="grid" aria-live="polite"></div>
+</main>
+<a href="/admin.html" class="admin">Quản trị</a>
+
+<script>
+  const btn = document.getElementById('btnMenu');
+  const drawer = document.getElementById('drawer');
+  document.getElementById('backdrop').onclick = ()=>drawer.classList.remove('open');
+  btn.onclick = ()=>drawer.classList.add('open');
+
+  async function loadAlbums(){
+    try{
+      const res = await fetch('/api/albums',{cache:'no-store'});
       const data = await res.json();
-      document.getElementById("albums").innerHTML = data.albums.map(a=>`
-        <div>
-          <h3><a href="album.html?slug=${a.slug}">${a.title}</a></h3>
-          <img src="${a.cover}" style="width:200px">
-        </div>
-      `).join("");
+      const grid = document.getElementById('grid');
+      grid.innerHTML = (data.albums||[]).map(a=>`
+        <a class="card" href="/album.html?slug=${encodeURIComponent(a.slug)}" title="${a.title}">
+          <div class="thumb" style="background-image:url('${(a.cover||'').replace(/"/g,'&quot;')}')"></div>
+          <div class="body">
+            <h3 class="title">${a.title}</h3>
+            <div class="tags">${(a.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+            <div class="foot"><span>${a.created||''}</span><span>▶</span></div>
+          </div>
+        </a>
+      `).join('');
+    }catch(e){
+      document.getElementById('grid').innerHTML = '<div>Lỗi tải dữ liệu.</div>';
+      console.error(e);
     }
-    load();
-  </script>
+  }
+  loadAlbums();
+</script>
 </body>
 </html>
