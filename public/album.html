@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><title>Album</title></head>
+<body>
+  <h1 id="title"></h1>
+  <div id="video"></div>
+  <div id="images"></div>
+
+<script>
+  const slug = new URLSearchParams(location.search).get("slug");
+  async function load() {
+    const res = await fetch("/api/albums");
+    const data = await res.json();
+    const album = data.albums.find(a=>a.slug===slug);
+    if(!album){ document.body.innerHTML="Album không tồn tại"; return; }
+    document.getElementById("title").textContent = album.title;
+    if(album.video){
+      document.getElementById("video").innerHTML = `<video src="${album.video}" controls width="400"></video>`;
+    }
+    document.getElementById("images").innerHTML = album.images.map(u=>`
+      <img src="${u}" width="300">
+    `).join("");
+  }
+  load();
+</script>
+</body>
+</html>

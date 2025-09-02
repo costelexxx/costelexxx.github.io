@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>Cosplay Gallery</title>
+</head>
+<body>
+  <h1>Danh sách Album</h1>
+  <div id="albums"></div>
+
+  <script>
+    async function load() {
+      const res = await fetch("/api/albums");
+      const data = await res.json();
+      document.getElementById("albums").innerHTML = data.albums.map(a=>`
+        <div>
+          <h3><a href="album.html?slug=${a.slug}">${a.title}</a></h3>
+          <img src="${a.cover}" style="width:200px">
+        </div>
+      `).join("");
+    }
+    load();
+  </script>
+</body>
+</html>

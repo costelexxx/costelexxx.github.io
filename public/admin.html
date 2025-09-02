@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><title>Admin</title></head>
+<body>
+  <h1>Thêm Album</h1>
+  <form id="form">
+    <input name="title" placeholder="Tiêu đề"><br>
+    <input name="slug" placeholder="Slug"><br>
+    <input name="cover" placeholder="Ảnh bìa"><br>
+    <input name="video" placeholder="Video link (tùy chọn)"><br>
+    <textarea name="images" placeholder="Mỗi dòng 1 ảnh"></textarea><br>
+    <button type="submit">Lưu</button>
+  </form>
+  <div id="msg"></div>
+
+<script>
+document.getElementById("form").onsubmit = async e=>{
+  e.preventDefault();
+  const f = e.target;
+  const album = {
+    title: f.title.value,
+    slug: f.slug.value,
+    cover: f.cover.value,
+    video: f.video.value,
+    images: f.images.value.split("\n").map(s=>s.trim()).filter(Boolean),
+    created: new Date().toISOString().slice(0,10)
+  };
+  const res = await fetch("/api/albums",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(album)
+  });
+  const data = await res.json();
+  document.getElementById("msg").textContent = "Đã lưu album: "+data.album.title;
+};
+</script>
+</body>
+</html>
